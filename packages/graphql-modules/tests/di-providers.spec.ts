@@ -381,6 +381,67 @@ test('Use @Inject decorator in constructor', async () => {
   expect(requestSpy).toHaveBeenCalledWith(request);
 });
 
+test('Inject other provider in constructor', async () => {
+  @Injectable({
+    scope: Scope.Singleton,
+    global: true,
+  })
+  class Auth {
+    getCurrentUser() {
+      return 'lorem';
+    }
+  }
+
+  @Injectable({
+    scope: Scope.Singleton,
+  })
+  class User {
+    constructor(private auth: Auth) {}
+
+    me() {
+      return this.auth.getCurrentUser();
+    }
+  }
+
+  const fooModule = createModule({
+    id: 'foo',
+    providers: [Auth, User],
+    typeDefs: gql`
+      type Query {
+        foo: String!
+      }
+    `,
+    resolvers: {
+      Query: {
+        foo(_parent: {}, _args: {}, { injector }: GraphQLModulesModuleContext) {
+          return injector.get(User).me();
+        },
+      },
+    },
+  });
+
+  const app = createApplication({
+    modules: [fooModule],
+  });
+
+  const contextValue = { request: {}, response: {} };
+  const document = gql`
+    {
+      foo
+    }
+  `;
+
+  const result = await testkit.execute(app, {
+    contextValue,
+    document,
+  });
+
+  expect(result.errors).toBeUndefined();
+  expect(result.data).toEqual({
+    foo: 'lorem',
+  });
+});
+
 test('Use useFactory with deps', async () => {
   const request = new Object();
   const requestSpy = jest.fn();
